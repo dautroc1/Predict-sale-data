@@ -1,0 +1,325 @@
+---
+title: "Report"
+output: html_document
+---
+
+## Data loading 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+library(ggcorrplot)
+library(ggplot2)
+library(reshape2)
+library(curl)
+library(httr)
+library(dplyr)
+library(RColorBrewer)
+library(forcats)
+library(curl)
+library(httr)
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/DecisionTree.rds"
+download.file(githubURL,"DecisionTree.rds")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/RandomForest.rds"
+download.file(githubURL,"RandomForest.rds")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/RandomForestTune1.rds"
+download.file(githubURL,"RandomForestTune1.rds")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/SVC.rds"
+download.file(githubURL,"SVC.rds")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/gbm.rds"
+download.file(githubURL,"gbm.rds")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/gbm.rds"
+download.file(githubURL,"gbm.rds")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/summer-products-with-rating-and-performance_2020-08.csv"
+download.file(githubURL,"summer-products-with-rating-and-performance_2020-08.csv")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/unique-categories.csv"
+download.file(githubURL,"unique-categories.csv")
+githubURL <- "https://github.com/dautroc1/Predict-sale-data/raw/main/data/unique-categories.sorted-by-count.csv"
+download.file(githubURL,"unique-categories.sorted-by-count.csv")
+
+```
+Firstly, we load the data.
+```{r}
+sale <- read.csv("summer-products-with-rating-and-performance_2020-08.csv")
+```
+
+## Data cleaning 
+We eliminate the column don't have valuable information. 
+
+```{r}
+drop <- c('title','title_orig','currency_buyer','merchant_id','product_id', 'theme', 'crawl_month','merchant_name','merchant_info_subtitle','merchant_title','urgency_text','shipping_option_name','sale$merchant_profile_picture', 'sale$product_url', 'sale$product_picture')
+sale <-  sale[,!(names(sale) %in% drop)]
+```
+
+We replace the empty value in merchant_profile_picture, product_url, product_picture with 0, non-empty value with 1
+
+```{r}
+sale$merchant_profile_picture <- ifelse(sale$merchant_profile_picture == "", 0,1)
+sale$product_url <- ifelse(sale$product_url == "", 0,1)
+sale$product_picture <- ifelse(sale$product_picture == "", 0,1)
+```
+
+We replace empty value with 0
+```{r}
+sale$rating_five_count[is.na(sale$rating_five_count)] <- 0
+sale$rating_four_count[is.na(sale$rating_four_count)] <- 0
+sale$rating_three_count[is.na(sale$rating_three_count)] <- 0
+sale$rating_two_count[is.na(sale$rating_two_count)] <- 0
+sale$rating_one_count[is.na(sale$rating_one_count)] <- 0
+sale$has_urgency_banner[is.na(sale$has_urgency_banner)] <- 0
+```
+## Exploratory analysis 
+
+```{r, echo= FALSE}
+sale$origin_country <- as.character(sale$origin_country)
+index <- sale$origin_country == ''
+sale$origin_country[index] <- "Other"
+```
+1/ Country   
+We look at the country column.  
+```{r}
+nb.cols <- 13
+a <- levels(fct_infreq(sale$origin_country))
+mycolors <- colorRampPalette(brewer.pal(8, "Blues"))(nb.cols)
+g <- ggplot(data = sale) + geom_bar(aes(x=fct_infreq(origin_country), fill = fct_infreq(origin_country)),stat="count") + xlab('Country')
+g <- g + scale_fill_manual(values = rev(mycolors)) + labs(fill = "list of country")
+g
+```
+
+United State an China have the largest proportion so we convert others countries to "other"
+
+```{r}
+nb.cols <- 13
+index <- sale$origin_country %in% c('VE', 'SG', 'AT', 'GB')
+sale$origin_country[index] <- "Other"
+mycolors <- colorRampPalette(brewer.pal(8, "Blues"))(nb.cols)
+g <- ggplot(data = sale) + geom_bar(aes(x=fct_infreq(origin_country), fill = fct_infreq(origin_country)),stat="count") + xlab('Country')
+g <- g + scale_fill_manual(values = rev(mycolors)) + labs(fill = "list of country")
+g
+```
+
+2/ Size  
+We can see clearly that there are too many sizes so we transform to 4 catagories "S", "M", "L", "XL". 
+
+```{r}
+sale$product_variation_size_id <- as.character(sale$product_variation_size_id)
+index <- sale$product_variation_size_id %in% c('33', '34', '2XL', '32/L','35','36','EU 35','EU39(US8)','L.','Round','Size-L','Size-L','SizeL')
+sale$product_variation_size_id[index] <- "L"
+
+index <- sale$product_variation_size_id %in% c('1m by 3m', '20pcs', '20PCS-10PAIRS', '25','25-S','26(Waist 72cm 28inch)','29','3 layered anklet','30 cm','B','Base Coat','daughter 24M','first  generation','H01','M.','One Size','Pack of 1','US 6.5 (EU 37)','US5.5-EU35','White','Women Size 36','Women Size 37','Size M')
+sale$product_variation_size_id[index] <- "M"
+
+index <- sale$product_variation_size_id %in% c('10pcs', '1pc', '2', '2pcs','4','4-5 Years','5','5PAIRS','AU plug Low quality','Baby Float Boat','Base & Top & Matte Top Coat','choose a size','Floating Chair for Kid','pants-S','s','S (waist58-62cm)','S Diameter 30cm','S Pink','S(bust 88cm)','S(Pink & Black)','S.','S..','S/M(child)','Size--S','Size-S','Size-S','Size-XS','Size XXS','SIZE XXS','Size/S','Suit-S','US-S','XS','XS.','XXS','XXXS','1','1 pc.','10 ml','17','Size-XXS','SIZE-XXS','Size -XXS','size S','Size S','Size S.','SIZE XS','','SIZE S','')
+sale$product_variation_size_id[index] <- "S"
+
+index <- sale$product_variation_size_id == ""
+sale$product_variation_size_id[index] <- "S"
+
+index <- sale$product_variation_size_id == "SIZE S"
+sale$product_variation_size_id[index] <- "S"
+
+index <- sale$product_variation_size_id %in% c('100 cm', '100 x 100cm(39.3 x 39.3inch)', '100pcs', '04-3XL','1 PC - XL','2XL','3XL','40 cm','4XL','5XL','60','6XL','80 X 200 CM','SIZE-4XL','Size-5XL','SIZE-4XL','Size-5XL','Size4XL','X   L','XXL','XXXL','XXXXL','XXXXXL')
+sale$product_variation_size_id[index] <- "XL"
+```
+
+Plot  
+```{r}
+
+nb.cols <- 13
+mycolors <- colorRampPalette(brewer.pal(8, "Purples"))(nb.cols)
+g <- ggplot(data = sale) + geom_bar(aes(x=fct_infreq(product_variation_size_id), fill = fct_infreq(product_variation_size_id)),stat="count") + xlab('Color')
+g <- g + scale_fill_manual(values = rev(mycolors)) + labs(fill = "list of size")
+g
+
+```
+
+3/ Color  
+
+We transform colors to some standard values
+
+```{r}
+sale$product_color <- as.character(sale$product_color)
+
+index <- sale$product_color == '' 
+sale$product_color[index] <- "other"
+
+index <- sale$product_color %in% c("applegreen",'apricot','army','army green','Army green','armygreen','camel','camel','camouflage','claret','darkgreen','floral','fluorescentgreen','ivory','jasper','light green','lightgreen','mintgreen')
+sale$product_color[index] <- "green"
+
+index <- sale$product_color %in% c('beige','brown & yellow','burgundy','coffee','khaki','lightkhaki')
+sale$product_color[index] <- "brown"
+
+index <- sale$product_color %in% c('Black','black & blue','black & green','black & stripe','black & white','black & yellow','blackwhite','coolblack','offblack')
+sale$product_color[index] <- "black"
+
+index <- sale$product_color %in% c('Blue','blue & pink','coralred','darkblue','denimblue','lakeblue','lightblue','navy','navy blue','navyblue','navyblue & white','prussianblue','skyblue')
+sale$product_color[index] <- "blue"
+
+index <- sale$product_color %in% c('dustypink','lightpink','Pink','pink & black','pink & blue','pink & blue','pink & grey','pink & white')
+sale$product_color[index] <- "pink"
+
+index <- sale$product_color %in% c('gold','leopard','leopardprint','lightyellow','rosegold')
+sale$product_color[index] <- "yellow"
+index <- sale$product_color %in% c('gray & white','greysnakeskinprint','lightgray','lightgrey')
+sale$product_color[index] <- "gray"
+
+index <- sale$product_color %in% c('lightpurple','violet')
+sale$product_color[index] <- "purple"
+
+index <- sale$product_color %in% c('lightred','RED','red & blue','rose','Rose red','rosered','watermelonred','wine','wine red','winered','winered & yellow')
+sale$product_color[index] <- "red"
+
+index <- sale$product_color %in% c('multicolor','nude','rainbow','silver','star','tan')
+sale$product_color[index] <- "other"
+
+index <- sale$product_color %in% c('offwhite','White','white & black','white & green','white & red','whitefloral','whitestripe')
+sale$product_color[index] <- "white"
+
+index <- sale$product_color %in% c('orange-red','orange & camouflage')
+sale$product_color[index] <- "orange"
+```
+
+Plot 
+```{r}
+nb.cols <- 13
+mycolors <- colorRampPalette(brewer.pal(8, "OrRd"))(nb.cols)
+g <- ggplot(data = sale) + geom_bar(aes(x=fct_infreq(product_color), fill = fct_infreq(product_color)),stat="count") + xlab('Color')
+g <- g + scale_fill_manual(values = rev(mycolors)) + labs(fill = "list of color")
+g
+``` 
+4/ Unit sold  
+
+We transform rows which has the unit sold less than 10 to 10. 
+```{r}
+
+index <- sale$units_sold < 10
+sale$units_sold[index] <- 10
+``` 
+
+Plot 
+```{r}
+sale$units_sold <- as.factor(sale$units_sold)
+nb.cols <- 15
+mycolors <- colorRampPalette(brewer.pal(8, "Greys"))(nb.cols)
+g <- ggplot(data = sale) + geom_bar(aes(x=fct_infreq(units_sold), fill = fct_infreq(units_sold)),stat="count") + xlab('Color') + labs(fill='Count')
+g <- g + scale_fill_manual(values = rev(mycolors)) + labs(fill = "list of unit sold")
+g
+```
+
+5/ Tags 
+
+Plot top popular tags    
+```{r}
+popular_tag <- read.csv('unique-categories.sorted-by-count.csv')
+top50 <- as.character(head(popular_tag$keyword, 50))
+top50 <- tolower(top50)
+top50 <- as.list(top50)
+nb.cols <- 10
+mycolors <- colorRampPalette(brewer.pal(8, "Greens"))(nb.cols)
+g <- ggplot(data = head(popular_tag, 10)) + geom_bar(aes(x=reorder(keyword, -count),y = count, fill = as.factor(count)),stat="identity",show.legend = FALSE) + xlab('Color') + labs(fill='Count')
+g <- g + scale_fill_manual(values = mycolors) + labs(fill = "list of tag")
+g
+```  
+
+Because tags column contains many noise so we eliminate it. We add a column with information about the number of popular tag.  
+
+
+```{r}
+replacetag <- function(tag, top50)
+{
+  tag <- as.character(tag)
+  temp <- strsplit(tolower(tag), ",")
+  inter <- intersect(temp[[1]], top50)
+  return (length(inter) / length(top50))
+}
+sale$tag_count <- sapply(sale$tags, FUN = replacetag, top50)
+drop <- 'tags'
+sale <-  sale[,!(names(sale) %in% drop)]
+```
+
+6/ Rating count  
+We can clearly see that the number of ratings and the number of unit solds have a strong relation. Futhermore, the company dont't have the number of ratings before released so we decide to remove the rating_count column. 
+
+```{r}
+drop <- c('rating_count')
+sale <-  sale[,!(names(sale) %in% drop)]
+```
+## Model  
+
+Decision tree  
+
+```{r,echo = FALSE}
+library(caret)
+set.seed(2000)
+trainindex <- createDataPartition(y = sale$units_sold,p = 0.70, list = FALSE)
+train <- sale[trainindex,]
+devtest <- sale[-trainindex,]
+devindex <- createDataPartition(y = devtest$units_sold,p = 0.5, list = FALSE)
+dev <- devtest[devindex,]
+test <- devtest[-devindex,]
+model <- readRDS("DecisionTree.rds")
+model
+```
+
+SVC  
+
+```{r,echo = FALSE}
+model1 <- readRDS("SVC.rds")
+model1
+```
+
+Random forest  
+```{r, echo = FALSE}
+model2 <- readRDS("RandomForest.rds")
+model2
+```
+
+GBM  
+```{r, echo = FALSE}
+model3 <- readRDS("gbm.rds")
+model3
+```
+
+Dev prediction  
+
+
+Decision Tree  
+
+```{r, echo = FALSE}
+p <- predict(model, dev)
+c <- confusionMatrix(p, dev$units_sold)
+c
+```
+
+SVC  
+
+```{r,echo = FALSE}
+p <- predict(model1, dev)
+c1 <- confusionMatrix(p, dev$units_sold)
+c1
+```
+
+Random Forest  
+
+```{r, echo = FALSE}
+p <- predict(model2, dev)
+c2 <- confusionMatrix(p, dev$units_sold)
+c2
+
+```
+
+GBM
+
+```{r, echo = FALSE}
+p <- predict(model3, dev)
+c3 <- confusionMatrix(p, dev$units_sold)
+c3
+```
+
+## Hyperparameter tuning  
+I try different values of mtry and ntree to fit model well.  
+
+```{r,echo = FALSE}
+tune <- readRDS('RandomForestTune1.rds')
+tune
+```
+
+
